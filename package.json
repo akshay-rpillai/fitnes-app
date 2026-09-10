@@ -1,0 +1,12 @@
+{
+  "name": "vah-health",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VAH Health frontend and API server",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}
