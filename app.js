@@ -12,7 +12,7 @@ const AUTH_STATE = {
 };
 
 const configuredApiBase = window.VAH_API_BASE || '';
-const API_BASE = configuredApiBase || (window.location.port === '3000' ? '/api' : 'http://localhost:3000/api');
+const API_BASE = configuredApiBase || 'https://fitnes-app-8isi.onrender.com/api';
 
 async function apiRequest(path, options = {}) {
   let response;
