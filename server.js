@@ -7,19 +7,32 @@ const { DatabaseSync } = require('node:sqlite');
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const DATA_FILE = path.join(ROOT, 'data.json');
+const SCHEMA_FILE = path.join(ROOT, 'schema.sql');
 const DB_FILE = process.env.DATABASE_FILE || path.join(ROOT, 'vah-health.db');
 const sessions = new Map();
 
 const database = new DatabaseSync(DB_FILE);
 database.exec('PRAGMA journal_mode = WAL');
-database.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    email TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
-    state_json TEXT
-  )
-`);
+database.exec(fs.readFileSync(SCHEMA_FILE, 'utf8'));
+
+function syncWorkoutLogs(user) {
+  const logs = Array.isArray(user.state?.logs) ? user.state.logs : [];
+  database.prepare('DELETE FROM workout_logs WHERE user_email = ?').run(user.email);
+  const insert = database.prepare(`
+    INSERT INTO workout_logs (id, user_email, workout_date, duration_minutes, workout_type)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  logs.forEach((log, index) => {
+    insert.run(
+      String(log.id || `${user.email}-${index}`),
+      user.email,
+      String(log.date || ''),
+      Number(log.workoutMins) || 0,
+      String(log.workoutType || 'General Workout')
+    );
+  });
+}
 
 function migrateJsonDatabase() {
   const userCount = database.prepare('SELECT COUNT(*) AS count FROM users').get().count;
@@ -38,6 +51,7 @@ function migrateJsonDatabase() {
         passwordHash: user.passwordHash,
         state: user.state ? JSON.stringify(user.state) : null
       });
+      syncWorkoutLogs(user);
     }
     console.log('Imported existing users from data.json into SQLite.');
   } catch (error) {
@@ -67,6 +81,7 @@ function saveUser(user) {
       password_hash = excluded.password_hash,
       state_json = excluded.state_json
   `).run(user.email, user.name, user.passwordHash, user.state ? JSON.stringify(user.state) : null);
+  syncWorkoutLogs(user);
 }
 
 function hashPassword(password) {
