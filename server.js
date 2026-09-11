@@ -183,7 +183,7 @@ function leaderboardResponse(currentUserEmail) {
     if (second.goalPercent !== first.goalPercent) return second.goalPercent - first.goalPercent;
     if (second.averageSteps !== first.averageSteps) return second.averageSteps - first.averageSteps;
     return second.lastUpdated - first.lastUpdated;
-  }).map((user, index) => ({ ...user, rank: index + 1 }));
+  }).slice(2).map((user, index) => ({ ...user, rank: index + 1 }));
 }
 
 function handleApi(request, response, pathname) {
