@@ -12,13 +12,17 @@ const AUTH_STATE = {
 };
 
 const configuredApiBase = window.VAH_API_BASE || '';
-const API_BASE = configuredApiBase || 'https://fitnes-app-8isi.onrender.com/api';
+const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const API_BASE = configuredApiBase || (isLocalHost
+  ? (window.location.port === '3000' ? `${window.location.origin}/api` : 'http://localhost:3000/api')
+  : 'https://fitnes-app-8isi.onrender.com/api');
 
 async function apiRequest(path, options = {}) {
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...options,
+      cache: options.cache || 'no-store',
       headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
     });
   } catch (error) {
@@ -250,6 +254,10 @@ const STATE = {
   logs: []
 };
 
+let leaderboard = [];
+let leaderboardRefreshTimer = null;
+let previousLeaderboardRanks = new Map();
+
 // WebCam Stream tracker
 let webCamStream = null;
 let capturedDataUrl = null;
@@ -265,6 +273,9 @@ document.addEventListener('DOMContentLoaded', () => {
   renderApp();
   setupEventListeners();
   startLiveClock();
+  leaderboardRefreshTimer = setInterval(() => {
+    if (AUTH_STATE.isLoggedIn) renderLeaderboard({ quiet: true });
+  }, 10000);
 });
 
 // Load Stored Logs & Escrow State
@@ -287,6 +298,13 @@ function loadStoredData() {
   }
 }
 
+function getTodayKey() {
+  const today = new Date();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${today.getFullYear()}-${month}-${day}`;
+}
+
 function saveState() {
   const state = {
     depositAmount: STATE.depositAmount,
@@ -297,7 +315,10 @@ function saveState() {
   localStorage.setItem('vah_health_state', JSON.stringify(state));
   if (!AUTH_STATE.token) return Promise.resolve(false);
 
-  return apiRequest('/state', apiOptions('PUT', { state })).then(() => true).catch(error => {
+  return apiRequest('/state', apiOptions('PUT', { state })).then(() => {
+    renderLeaderboard({ quiet: true });
+    return true;
+  }).catch(error => {
     console.warn('Could not sync state with backend:', error.message);
     showToast(error.apiUnavailable
       ? 'Saved on this device. Start the backend to sync your profile.'
@@ -541,7 +562,73 @@ function renderApp() {
   renderEscrowHeader();
   renderHeroVault();
   renderSummaryStats();
+  renderLeaderboard();
   renderActivityTable();
+}
+
+async function renderLeaderboard({ quiet = false } = {}) {
+  const tableBody = document.getElementById('leaderboard-table-body');
+  const podium = document.getElementById('leaderboard-podium');
+  const status = document.getElementById('leaderboard-status');
+  if (!tableBody || !AUTH_STATE.isLoggedIn || !AUTH_STATE.token) return;
+
+  if (!quiet) {
+    tableBody.innerHTML = '<tr><td colspan="7" class="leaderboard-loading">Loading today\'s student performances...</td></tr>';
+  }
+  try {
+    const response = await apiRequest('/leaderboard', apiOptions('GET'));
+    const nextLeaderboard = response.leaderboard || [];
+    const promotedEntry = nextLeaderboard.find(entry => {
+      const previousRank = previousLeaderboardRanks.get(entry.name);
+      return entry.rank === 1 && previousRank && previousRank > 1;
+    });
+    leaderboard = nextLeaderboard;
+    previousLeaderboardRanks = new Map(leaderboard.map(entry => [entry.name, entry.rank]));
+    if (podium) {
+      const podiumEntries = leaderboard.slice(0, 3);
+      podium.innerHTML = podiumEntries.length
+        ? podiumEntries.map(entry => `
+          <div class="podium-place podium-place-${entry.rank} ${entry.isCurrentUser ? 'podium-current-user' : ''}">
+            <div class="podium-medal">${entry.rank === 1 ? '&#9733;' : entry.rank}</div>
+            <div class="podium-name">${escapeHtml(entry.name.replace(' (Student)', ''))}</div>
+            <div class="podium-score">${entry.today ? entry.today.steps.toLocaleString() : 0} steps</div>
+            <div class="podium-block"><span>#${entry.rank}</span></div>
+          </div>
+        `).join('')
+        : '<div class="podium-empty">Be the first student to log a workout.</div>';
+    }
+    tableBody.innerHTML = leaderboard.length
+      ? leaderboard.map(entry => `
+        <tr class="${entry.isCurrentUser ? 'leaderboard-current-user' : ''}${promotedEntry && promotedEntry.name === entry.name ? ' leaderboard-promoted' : ''}">
+          <td><span class="leaderboard-rank rank-${entry.rank}">${entry.rank}</span></td>
+          <td><strong>${escapeHtml(entry.name.replace(' (Student)', ''))}</strong>${entry.isCurrentUser ? '<span class="leaderboard-you">You</span>' : ''}</td>
+          <td>${entry.today ? escapeHtml(entry.today.workout) : '<span class="leaderboard-muted">No workout yet</span>'}${entry.today && entry.today.minutes ? ` <small>${entry.today.minutes} min</small>` : ''}</td>
+          <td>${entry.today ? entry.today.steps.toLocaleString() : '--'}</td>
+          <td>${entry.today ? `${entry.today.calories.toLocaleString()} kcal` : '--'}</td>
+          <td><span class="leaderboard-status ${entry.today ? 'has-today' : ''}">${entry.today ? entry.today.status : 'Not recorded'}</span></td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="7" class="leaderboard-loading">Be the first student to log a workout.</td></tr>';
+
+    const currentUser = leaderboard.find(entry => entry.isCurrentUser);
+    if (status && currentUser) {
+      status.textContent = promotedEntry
+        ? `${escapeHtml(promotedEntry.name.replace(' (Student)', ''))} moved into #1. Keep pushing!`
+        : currentUser.rank === 1
+        ? 'You are leading the board. Keep the streak alive!'
+        : `You are #${currentUser.rank}. One more healthy day can move you up.`;
+    }
+  } catch (error) {
+    leaderboard = [];
+    tableBody.innerHTML = '<tr><td colspan="7" class="leaderboard-loading">Leaderboard is unavailable right now. Your personal progress is still saved.</td></tr>';
+    if (status) status.textContent = 'Every day you show up is progress. Keep building your streak.';
+  }
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>'"]/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+  }[character]));
 }
 
 function renderEscrowHeader() {
@@ -948,6 +1035,7 @@ function confirmLiveProof() {
         : 1;
       targetLog = {
         id: `camera-${Date.now()}`,
+        dateKey: getTodayKey(),
         date: 'Today (Camera)',
         steps: 0,
         stepsTarget: 10000,
@@ -1048,13 +1136,13 @@ function closeLogModal() {
 
 function updateManualCalorieEstimate() {
   const steps = Number(document.getElementById('input-steps')?.value) || 0;
-  const weight = Number(document.getElementById('input-weight')?.value) || 0;
+  const weight = 73;
   const estimate = Math.max(0, Math.round(steps * weight * 0.00065));
   const estimateEl = document.getElementById('manual-calorie-estimate');
   if (estimateEl) {
     estimateEl.textContent = estimate
       ? `Approx. calories: ${estimate.toLocaleString()} kcal`
-      : 'Approx. calories: enter steps and weight';
+      : 'Approx. calories: enter steps';
   }
 }
 
@@ -1063,15 +1151,16 @@ async function handleAddActivitySubmit(e) {
   const form = e.target;
 
   const steps = parseInt(form.steps.value, 10) || 0;
-  const weight = parseFloat(form.weight.value) || 73.0;
-  const waterLiters = parseFloat(form.water.value) || 2.5;
-  const workoutMins = parseInt(form.workoutMins.value, 10) || 45;
-  const workoutType = form.workoutType.value || 'General Workout';
-  const sleepHours = parseFloat(form.sleepHours.value) || 7.5;
+  const weight = 73.0;
+  const waterLiters = 2.5;
+  const workoutMins = 45;
+  const workoutType = 'Walking';
+  const sleepHours = 7.5;
   const calBurned = Math.max(1, Math.round(steps * weight * 0.00065));
 
   const newLog = {
     id: `log-${Date.now()}`,
+    dateKey: getTodayKey(),
     date: 'Today (New)',
     steps,
     stepsTarget: 10000,

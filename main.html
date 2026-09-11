@@ -426,6 +426,41 @@
         </div>
       </section>
 
+      <!-- Community Leaderboard & Daily Motivation -->
+      <section class="leaderboard-section">
+        <div class="leaderboard-heading">
+          <div>
+            <span class="info-badge">Community Momentum</span>
+            <h2 class="section-title">Student Leaderboard</h2>
+            <p class="section-desc">See how your consistency compares with other students in the challenge.</p>
+          </div>
+          <div class="motivation-line" id="leaderboard-status">Every day you show up is progress. Keep building your streak.</div>
+        </div>
+        <div class="leaderboard-card">
+          <div class="leaderboard-podium" id="leaderboard-podium" aria-label="Top three students">
+            <div class="podium-empty">Loading top performers...</div>
+          </div>
+          <div class="table-scroll-wrapper">
+            <table class="leaderboard-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Student</th>
+                  <th>Verified Days</th>
+                  <th>Today's Workout</th>
+                  <th>Today's Steps</th>
+                  <th>Today's Calories</th>
+                  <th>Today's Status</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboard-table-body">
+                <tr><td colspan="7" class="leaderboard-loading">Loading student performances...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- Live Proof Verification Callout Card -->
       <section class="proof-callout-card">
         <div class="proof-left">
@@ -643,35 +678,15 @@
       <form id="add-activity-form">
         <div class="modal-body">
           <p style="font-size: 0.82rem; color: #546e7a; margin: 0;">
-            Enter the essentials. Calories are estimated automatically from your steps and weight.
+            Enter today's steps. The remaining activity details use realistic defaults and can be updated later.
           </p>
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label" for="input-steps">Steps Count</label>
-              <input type="number" name="steps" id="input-steps" class="form-input" placeholder="e.g. 10500" oninput="updateManualCalorieEstimate()" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="input-weight">Current Weight (kg)</label>
-              <input type="number" step="0.1" name="weight" id="input-weight" class="form-input" placeholder="e.g. 73.5" oninput="updateManualCalorieEstimate()" required>
+              <input type="number" name="steps" id="input-steps" class="form-input" placeholder="e.g. 10500" min="0" required>
             </div>
             <div id="manual-calorie-estimate" style="grid-column: 1 / -1; color: #00695c; font-size: 0.8rem; font-weight: 700;">
-              Approx. calories: enter steps and weight
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="input-workout-mins">Workout Duration (mins)</label>
-              <input type="number" name="workoutMins" id="input-workout-mins" class="form-input" placeholder="e.g. 45" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="input-workout-type">Workout Category</label>
-              <input type="text" name="workoutType" id="input-workout-type" class="form-input" placeholder="e.g. Walking" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="input-water">Water Intake (liters)</label>
-              <input type="number" step="0.1" name="water" id="input-water" class="form-input" placeholder="e.g. 2.5" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="input-sleep-hours">Sleep Duration (hrs)</label>
-              <input type="number" step="0.1" name="sleepHours" id="input-sleep-hours" class="form-input" placeholder="e.g. 7.5" required>
+              Defaults: 73 kg, 45-minute walk, 2.5 L water, 7.5 hours sleep
             </div>
           </div>
 

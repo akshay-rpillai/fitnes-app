@@ -95,6 +95,7 @@ function createToken() {
 function sendJson(response, status, payload) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS'
@@ -126,6 +127,63 @@ function authenticatedUser(request) {
 
 function userResponse(user) {
   return { name: user.name, email: user.email };
+}
+function getTodayKey() {
+  const today = new Date();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${today.getFullYear()}-${month}-${day}`;
+}
+
+function isTodayLog(log) {
+  return log.dateKey === getTodayKey() || String(log.date || '').toLowerCase().startsWith('today');
+}
+
+function leaderboardResponse(currentUserEmail) {
+  const users = database.prepare('SELECT email, name, state_json FROM users').all();
+  return users.map(user => {
+    const state = user.state_json ? JSON.parse(user.state_json) : {};
+    const logs = Array.isArray(state.logs) ? state.logs : [];
+      const todayLog = logs.find(isTodayLog) || null;
+    const verifiedDays = logs.filter(log => log.proofStatus === 'verified').length;
+    const goalPercent = logs.length
+      ? Math.round(logs.reduce((total, log) => total + (Number(log.goalPercent) || 0), 0) / logs.length)
+      : 0;
+    const averageSteps = logs.length
+      ? Math.round(logs.reduce((total, log) => total + (Number(log.steps) || 0), 0) / logs.length)
+      : 0;
+
+    return {
+      name: user.name,
+      daysLogged: logs.length,
+      verifiedDays,
+      goalPercent,
+      averageSteps,
+            today: todayLog ? {
+              steps: Number(todayLog.steps) || 0,
+              workout: String(todayLog.workoutType || 'Workout recorded'),
+              minutes: Number(todayLog.workoutMins) || 0,
+              calories: Number(todayLog.calBurned) || 0,
+              goalPercent: Number(todayLog.goalPercent) || 0,
+              status: todayLog.proofStatus === 'verified' ? 'Verified' : 'Recorded'
+            } : null,
+            todaySteps: todayLog ? Number(todayLog.steps) || 0 : 0,
+      lastUpdated: logs.reduce((latest, log) => {
+        const timestamp = Date.parse(log.proofTimestamp || log.date || '') || 0;
+        return Math.max(latest, timestamp);
+      }, 0),
+      isCurrentUser: user.email === currentUserEmail
+    };
+  }).sort((first, second) => {
+    if (second.todaySteps !== first.todaySteps) return second.todaySteps - first.todaySteps;
+    if ((second.today?.goalPercent || 0) !== (first.today?.goalPercent || 0)) {
+      return (second.today?.goalPercent || 0) - (first.today?.goalPercent || 0);
+    }
+    if (second.verifiedDays !== first.verifiedDays) return second.verifiedDays - first.verifiedDays;
+    if (second.goalPercent !== first.goalPercent) return second.goalPercent - first.goalPercent;
+    if (second.averageSteps !== first.averageSteps) return second.averageSteps - first.averageSteps;
+    return second.lastUpdated - first.lastUpdated;
+  }).map((user, index) => ({ ...user, rank: index + 1 }));
 }
 
 function handleApi(request, response, pathname) {
@@ -169,6 +227,12 @@ function handleApi(request, response, pathname) {
     const user = authenticatedUser(request);
     if (!user) return sendJson(response, 401, { error: 'Authentication required.' });
     return sendJson(response, 200, { state: user.state });
+  }
+
+  if (request.method === 'GET' && pathname === '/api/leaderboard') {
+    const user = authenticatedUser(request);
+    if (!user) return sendJson(response, 401, { error: 'Authentication required.' });
+    return sendJson(response, 200, { leaderboard: leaderboardResponse(user.email) });
   }
 
   if (request.method === 'PUT' && pathname === '/api/state') {
